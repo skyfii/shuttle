@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/litl/shuttle/client"
@@ -389,34 +392,136 @@ func (s *Service) runTCP() {
 	}
 }
 
+// Code for UDP connection tracking stuff
+const (
+	UDPConnTrackTimeout = 90 * time.Second
+	UDPBufSize          = 65507
+)
+
+type connTrackKey struct {
+	IPHigh uint64
+	IPLow  uint64
+	Port   int
+}
+
+func newConnTrackKey(addr *net.UDPAddr) *connTrackKey {
+	if len(addr.IP) == net.IPv4len {
+		return &connTrackKey{
+			IPHigh: 0,
+			IPLow:  uint64(binary.BigEndian.Uint32(addr.IP)),
+			Port:   addr.Port,
+		}
+	}
+	return &connTrackKey{
+		IPHigh: binary.BigEndian.Uint64(addr.IP[:8]),
+		IPLow:  binary.BigEndian.Uint64(addr.IP[8:]),
+		Port:   addr.Port,
+	}
+}
+
+type connTrackMap map[connTrackKey]*net.UDPConn
+
+// UDPProxy is proxy for which handles UDP datagrams. It implements the Proxy
+// interface to handle UDP traffic forwarding between the frontend and backend
+// addresses.
+type UDPProxy struct {
+	listener       *net.UDPConn
+	frontendAddr   *net.UDPAddr
+	backendAddr    *net.UDPAddr
+	connTrackTable connTrackMap
+	connTrackLock  sync.Mutex
+}
+
+func (s *Service) replyLoop(proxy *UDPProxy, proxyConn *net.UDPConn, clientAddr *net.UDPAddr, clientKey *connTrackKey) {
+	defer func() {
+		proxy.connTrackLock.Lock()
+		delete(proxy.connTrackTable, *clientKey)
+		proxy.connTrackLock.Unlock()
+		proxyConn.Close()
+	}()
+
+	readBuf := make([]byte, UDPBufSize)
+	for {
+		proxyConn.SetReadDeadline(time.Now().Add(UDPConnTrackTimeout))
+		again:
+		read, err := proxyConn.Read(readBuf)
+		if err != nil {
+			if err, ok := err.(*net.OpError); ok && err.Err == syscall.ECONNREFUSED {
+				// This will happen if the last write failed
+				// (e.g: nothing is actually listening on the
+				// proxied port on the container), ignore it
+				// and continue until UDPConnTrackTimeout
+				// expires:
+				goto again
+			}
+			return
+		}
+		for i := 0; i != read; {
+			n, err := proxy.listener.WriteToUDP(readBuf[i:read], clientAddr)
+			if err != nil {
+				log.Errorf("ERROR: %s", err.Error())
+				atomic.AddInt64(&s.Errors, 1)
+				return
+			} else {
+				atomic.AddInt64(&s.Sent, int64(n))
+				return
+			}
+		}
+	}
+}
+
+// Close stops forwarding the traffic.
+func Close(proxy *UDPProxy) {
+	proxy.listener.Close()
+	proxy.connTrackLock.Lock()
+	defer proxy.connTrackLock.Unlock()
+	for _, conn := range proxy.connTrackTable {
+		conn.Close()
+	}
+}
+
+func isClosedError(err error) bool {
+	/* This comparison is ugly, but unfortunately, net.go doesn't export errClosing.
+	 * See:
+	 * http://golang.org/src/pkg/net/net.go
+	 * https://code.google.com/p/go/issues/detail?id=4337
+	 * https://groups.google.com/forum/#!msg/golang-nuts/0_aaCvBmOcM/SptmDyX1XJMJ
+	 */
+	return strings.HasSuffix(err.Error(), "use of closed network connection")
+}
+
 func (s *Service) runUDP() {
-	buff := make([]byte, 65536)
+	buff := make([]byte, UDPBufSize)
 	conn := s.udpListener
 
 	// for UDP, we can proxy the data right here.
 	for {
-		n, _, err := conn.ReadFromUDP(buff)
+		read, from, err := conn.ReadFromUDP(buff)
 		if err != nil {
 			// we can't cleanly signal the Read to stop, so we have to
 			// string-match this error.
-			if err.Error() == "use of closed network connection" {
-				// normal shutdown
-				return
-			} else if err, ok := err.(net.Error); ok && err.Temporary() {
-				log.Warnf("WARN: %s", err.Error())
-			} else {
-				// unexpected error, log it before exiting
-				log.Errorf("ERROR: %s", err.Error())
-				atomic.AddInt64(&s.Errors, 1)
-				return
+			//	if err.Error() == "use of closed network connection" {
+			//		// normal shutdown
+			//		return
+			//	} else if err, ok := err.(net.Error); ok && err.Temporary() {
+			//		log.Warnf("WARN: %s", err.Error())
+			//	} else {
+			// unexpected error, log it before exiting
+			//		log.Errorf("ERROR: %s", err.Error())
+			//		atomic.AddInt64(&s.Errors, 1)
+			//		return
+			//	}
+			if !isClosedError(err) {
+				log.Errorf("Use of closed network")
+				break
 			}
 		}
 
-		if n == 0 {
+		if read == 0 {
 			continue
 		}
 
-		atomic.AddInt64(&s.Rcvd, int64(n))
+		atomic.AddInt64(&s.Rcvd, int64(read))
 
 		backend := s.udpRoundRobin()
 		if backend == nil {
@@ -425,18 +530,37 @@ func (s *Service) runUDP() {
 			continue
 		}
 
-		n, err = conn.WriteTo(buff[:n], backend.udpAddr)
-		if err != nil {
-			if err, ok := err.(net.Error); ok && err.Temporary() {
+		proxy := &UDPProxy{
+			listener:       conn,
+			frontendAddr:   conn.LocalAddr().(*net.UDPAddr),
+			backendAddr:    backend.udpAddr,
+			connTrackTable: make(connTrackMap),
+		}
+
+		fromKey := newConnTrackKey(from)
+		proxy.connTrackLock.Lock()
+		proxyConn, hit := proxy.connTrackTable[*fromKey]
+		if !hit {
+			proxyConn, err = net.DialUDP("udp", nil, proxy.backendAddr)
+			if err != nil {
 				log.Warnf("WARN: %s", err.Error())
+				proxy.connTrackLock.Unlock()
 				continue
 			}
+			proxy.connTrackTable[*fromKey] = proxyConn
+			go s.replyLoop(proxy, proxyConn, from, fromKey)
+		}
+		proxy.connTrackLock.Unlock()
 
+		n, err := proxyConn.Write(buff[:read])
+		if err != nil {
 			log.Errorf("ERROR: %s", err.Error())
 			atomic.AddInt64(&s.Errors, 1)
+			break
 		} else {
 			atomic.AddInt64(&s.Sent, int64(n))
 		}
+
 	}
 }
 
