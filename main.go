@@ -3,8 +3,7 @@ package main
 import (
 	"flag"
 	"sync"
-
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/log"
 )
 
 var (
@@ -31,11 +30,12 @@ var (
 
 	// version flags
 	version      bool
-	buildVersion string
 
 	// SSL Certificate directory
 	certDir string
 )
+
+var buildVersion = "undefined"
 
 func init() {
 	flag.StringVar(&httpAddr, "http", "", "http server address")
