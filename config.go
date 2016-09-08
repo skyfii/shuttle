@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"sync"
-
-	"github.com/litl/shuttle/client"
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/client"
+	"github.com/skyfii/shuttle/log"
 )
 
 func loadConfig() {
@@ -18,20 +17,20 @@ func loadConfig() {
 
 		cfgData, err := ioutil.ReadFile(cfgPath)
 		if err != nil {
-			log.Warnln("Error reading config:", err)
+			log.Warnln("WARN: Reading config ", err)
 			continue
 		}
 
 		var cfg client.Config
 		err = json.Unmarshal(cfgData, &cfg)
 		if err != nil {
-			log.Warnln("Config error:", err)
+			log.Warnln("WARN: Config error:", err)
 			continue
 		}
-		log.Debug("Loaded config from:", cfgPath)
+		log.Debug("DEBUG: Loaded config from:", cfgPath)
 
 		if err := Registry.UpdateConfig(cfg); err != nil {
-			log.Printf("Unable to load config: error: %s", err)
+			log.Errorf("ERROR: Unable to load config: %s", err)
 		}
 	}
 }
@@ -44,7 +43,7 @@ func writeStateConfig() {
 	defer configMutex.Unlock()
 
 	if stateConfig == "" {
-		log.Debug("No state file. Not saving changes")
+		log.Debug("DEBUG: No state file. Not saving changes")
 		return
 	}
 
@@ -55,13 +54,13 @@ func writeStateConfig() {
 
 	lastCfg, _ := ioutil.ReadFile(stateConfig)
 	if bytes.Equal(cfg, lastCfg) {
-		log.Println("No change in config")
+		log.Println("INFO: No change in config")
 		return
 	}
 
 	// We should probably write a temp file and mv for atomic update.
 	err := ioutil.WriteFile(stateConfig, cfg, 0644)
 	if err != nil {
-		log.Println("Error saving config state:", err)
+		log.Errorln("ERROR: Can't save config state:", err)
 	}
 }

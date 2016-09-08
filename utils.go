@@ -13,7 +13,7 @@ import (
 func marshal(i interface{}) []byte {
 	jsonBytes, err := json.MarshalIndent(i, "", "  ")
 	if err != nil {
-		log.Println("error encoding json:", err)
+		log.Println("ERROR: Troble encoding json-", err)
 	}
 	return append(jsonBytes, '\n')
 }

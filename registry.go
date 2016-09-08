@@ -6,9 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/litl/shuttle/client"
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/client"
+	"github.com/skyfii/shuttle/log"
 )
 
 var (
@@ -64,7 +63,7 @@ func (v *VirtualHost) Add(svc *Service) {
 	defer v.Unlock()
 	for _, s := range v.services {
 		if s.Name == svc.Name {
-			log.Debugf("Service %s already registered in VirtualHost %s", svc.Name, v.Name)
+			log.Debugf("DEBUG: Service %s already registered in VirtualHost %s", svc.Name, v.Name)
 			return
 		}
 	}
@@ -72,7 +71,7 @@ func (v *VirtualHost) Add(svc *Service) {
 	// TODO: is this the best place to log these?
 	svcCfg := svc.Config()
 	for _, backend := range svcCfg.Backends {
-		log.Printf("Adding backend http://%s to VirtualHost %s", backend.Addr, v.Name)
+		log.Printf("INFO: Adding backend http://%s to VirtualHost %s", backend.Addr, v.Name)
 	}
 	v.services = append(v.services, svc)
 }
@@ -90,7 +89,7 @@ func (v *VirtualHost) Remove(svc *Service) {
 	}
 
 	if found < 0 {
-		log.Debugf("Service %s not found under VirtualHost %s", svc.Name, v.Name)
+		log.Debugf("DEBUG: Service %s not found under VirtualHost %s", svc.Name, v.Name)
 		return
 	}
 
@@ -99,7 +98,7 @@ func (v *VirtualHost) Remove(svc *Service) {
 
 	// Now removing this Service
 	for _, backend := range svcCfg.Backends {
-		log.Printf("Removing backend http://%s from VirtualHost %s", backend.Addr, v.Name)
+		log.Printf("INFO: Removing backend http://%s from VirtualHost %s", backend.Addr, v.Name)
 	}
 
 	v.services = append(v.services[:found], v.services[found+1:]...)
@@ -111,7 +110,7 @@ func (v *VirtualHost) Service() *Service {
 	defer v.Unlock()
 
 	if len(v.services) == 0 {
-		log.Warnf("No Services registered for VirtualHost %s", v.Name)
+		log.Warnf("WARN: No Services registered for VirtualHost %s", v.Name)
 		return nil
 	}
 
@@ -198,12 +197,12 @@ func (s *ServiceRegistry) UpdateConfig(cfg client.Config) error {
 		// Add a new service, or update an existing one.
 		if Registry.GetService(svc.Name) == nil {
 			if err := Registry.AddService(svc); err != nil {
-				log.Errorln("Unable to add service %s: %s", svc.Name, err.Error())
+				log.Errorf("ERROR: Unable to add service %s - %s", svc.Name, err.Error())
 				errors.Add(err)
 				continue
 			}
 		} else if err := Registry.UpdateService(svc); err != nil {
-			log.Errorln("Unable to update service %s: %s", svc.Name, err.Error())
+			log.Errorf("ERROR: Unable to update service %s - %s", svc.Name, err.Error())
 			errors.Add(err)
 			continue
 		}
@@ -247,9 +246,9 @@ func (s *ServiceRegistry) AddService(svcCfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Debug("Adding service:", svcCfg.Name)
+	log.Debug("DEBUG: Adding service:", svcCfg.Name)
 	if _, ok := s.svcs[svcCfg.Name]; ok {
-		log.Debug("Service already exists:", svcCfg.Name)
+		log.Debug("DEBUG: Service already exists:", svcCfg.Name)
 		return ErrDuplicateService
 	}
 
@@ -259,6 +258,7 @@ func (s *ServiceRegistry) AddService(svcCfg client.ServiceConfig) error {
 	service := NewService(svcCfg)
 	err := service.start()
 	if err != nil {
+		log.Errorf("ERROR: Unable to start service '%s'", svcCfg.Name)
 		return err
 	}
 
@@ -285,10 +285,10 @@ func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Debug("Updating Service:", newCfg.Name)
+	log.Debug("DEBUG: Updating Service:", newCfg.Name)
 	service, ok := s.svcs[newCfg.Name]
 	if !ok {
-		log.Debug("Service not found:", newCfg.Name)
+		log.Debug("DEBUG: Service not found:", newCfg.Name)
 		return ErrNoService
 	}
 
@@ -315,14 +315,14 @@ func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 	for _, newBackend := range newCfg.Backends {
 		current, ok := currentBackends[newBackend.Name]
 		if ok && current.Equal(newBackend) {
-			log.Debugf("Backend %s/%s unchanged", service.Name, current.Name)
+			log.Debugf("DEBUG: Backend %s/%s unchanged", service.Name, current.Name)
 			// no change for this one
 			delete(currentBackends, current.Name)
 			continue
 		}
 
 		// we need to remove and re-add this backend
-		log.Debugf("Updating Backend %s/%s", service.Name, newBackend.Name)
+		log.Warnf("WARN: Updating Backend %s/%s", service.Name, newBackend.Name)
 		service.remove(newBackend.Name)
 		service.add(NewBackend(newBackend))
 
@@ -331,18 +331,18 @@ func (s *ServiceRegistry) UpdateService(newCfg client.ServiceConfig) error {
 
 	// remove any left over backends
 	for name := range currentBackends {
-		log.Debugf("Removing Backend %s/%s", service.Name, name)
+		log.Debugf("DEBUG: Removing Backend %s/%s", service.Name, name)
 		service.remove(name)
 	}
 
 	if currentCfg.Equal(newCfg) {
-		log.Debugf("Service Unchanged %s", service.Name)
+		log.Debugf("DEBUG: Service Unchanged %s", service.Name)
 		return nil
 	}
 
 	// replace error pages if there's any change
 	if !reflect.DeepEqual(service.errPagesCfg, newCfg.ErrorPages) {
-		log.Debugf("Updating ErrorPages")
+		log.Debugf("DEBUG: Updating ErrorPages")
 		service.errPagesCfg = newCfg.ErrorPages
 		service.errorPages.Update(newCfg.ErrorPages)
 	}
@@ -399,7 +399,7 @@ func (s *ServiceRegistry) updateVHosts(service *Service, newHosts []string) {
 			vhost.Remove(service)
 		}
 		if vhost.Len() == 0 {
-			log.Println("Removing empty VirtualHost", name)
+			log.Println("INFO: Removing empty VirtualHost", name)
 			delete(s.vhosts, name)
 		}
 	}
@@ -423,7 +423,7 @@ func (s *ServiceRegistry) RemoveService(name string) error {
 
 	svc, ok := s.svcs[name]
 	if ok {
-		log.Debugf("Removing Service %s", svc.Name)
+		log.Debugf("DEBUG: Removing Service %s", svc.Name)
 		delete(s.svcs, name)
 		svc.stop()
 
@@ -442,7 +442,7 @@ func (s *ServiceRegistry) RemoveService(name string) error {
 				}
 			}
 			if removeVhost {
-				log.Debugf("Removing VirtualHost %s", host)
+				log.Debugf("DEBUG: Removing VirtualHost %s", host)
 				delete(s.vhosts, host)
 
 			}
@@ -502,7 +502,7 @@ func (s *ServiceRegistry) AddBackend(svcName string, backendCfg client.BackendCo
 		return ErrNoService
 	}
 
-	log.Debugf("Adding Backend %s/%s", service.Name, backendCfg.Name)
+	log.Debugf("DEBUG: Adding Backend %s/%s", service.Name, backendCfg.Name)
 	service.add(NewBackend(backendCfg))
 	return nil
 }
@@ -512,7 +512,7 @@ func (s *ServiceRegistry) RemoveBackend(svcName, backendName string) error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Debugf("Removing Backend %s/%s", svcName, backendName)
+	log.Debugf("DEBUG: Removing Backend %s/%s", svcName, backendName)
 	service, ok := s.svcs[svcName]
 	if !ok {
 		return ErrNoService

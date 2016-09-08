@@ -6,9 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/litl/shuttle/client"
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/client"
+	"github.com/skyfii/shuttle/log"
 )
 
 type Backend struct {
@@ -164,31 +163,31 @@ func (b *Backend) check() {
 		c.(*net.TCPConn).SetLinger(0)
 		c.Close()
 	} else {
-		log.Debug("Check error:", e)
+		log.Debug("DEBUG: Check error:", e)
 		up = false
 	}
 
 	b.Lock()
 	defer b.Unlock()
 	if up {
-		log.Debugf("Check OK for %s/%s", b.Name, b.CheckAddr)
+		log.Debugf("DEBUG: Check OK for %s/%s", b.Name, b.CheckAddr)
 		b.fallCount = 0
 		b.riseCount++
 		b.checkOK++
 		if b.riseCount >= b.rise {
 			if !b.up {
-				log.Debugf("Marking backend %s Up", b.Name)
+				log.Debugf("DEBUG: Marking backend %s Up", b.Name)
 			}
 			b.up = true
 		}
 	} else {
-		log.Debugf("Check failed for %s/%s", b.Name, b.CheckAddr)
+		log.Debugf("DEBUG: Check failed for %s/%s", b.Name, b.CheckAddr)
 		b.riseCount = 0
 		b.fallCount++
 		b.checkFail++
 		if b.fallCount >= b.fall {
 			if b.up {
-				log.Debugf("Marking backend %s Down", b.Name)
+				log.Debugf("DEBUG: Marking backend %s Down", b.Name)
 			}
 			b.up = false
 		}
@@ -201,7 +200,7 @@ func (b *Backend) healthCheck() {
 	for {
 		select {
 		case <-b.stopCheck:
-			log.Debug("Stopping backend", b.Name)
+			log.Debug("DEBUG: Stopping backend", b.Name)
 			t.Stop()
 			return
 		case <-t.C:
@@ -216,7 +215,7 @@ type closeReader interface {
 }
 
 func (b *Backend) Proxy(srvConn, cliConn net.Conn) {
-	log.Debugf("Initiating proxy: %s/%s-%s/%s",
+	log.Debugf("DEBUG: Initiating proxy: %s/%s-%s/%s",
 		cliConn.RemoteAddr(),
 		cliConn.LocalAddr(),
 		srvConn.LocalAddr(),
@@ -252,14 +251,14 @@ func (b *Backend) Proxy(srvConn, cliConn net.Conn) {
 	var waitFor chan bool
 	select {
 	case <-clientClosed:
-		log.Debugf("Client %s/%s closed connection", cliConn.RemoteAddr(), cliConn.LocalAddr())
+		log.Debugf("DEBUG: Client %s/%s closed connection", cliConn.RemoteAddr(), cliConn.LocalAddr())
 		// the client closed first, so any more packets here are invalid, and
 		// we can SetLinger(0) to recycle the port faster.
 		bConn.TCPConn.SetLinger(0)
 		bConn.CloseRead()
 		waitFor = backendClosed
 	case <-backendClosed:
-		log.Debugf("Server %s/%s closed connection", srvConn.RemoteAddr(), srvConn.LocalAddr())
+		log.Debugf("DEBUG: Server %s/%s closed connection", srvConn.RemoteAddr(), srvConn.LocalAddr())
 		cliConn.(closeReader).CloseRead()
 		waitFor = clientClosed
 	}
@@ -273,11 +272,11 @@ func broker(dst, src net.Conn, srcClosed chan bool, written, errors *int64) {
 	_, err := io.Copy(dst, src)
 	if err != nil {
 		atomic.AddInt64(errors, 1)
-		log.Printf("Copy error: %s", err)
+		log.Errorf("ERROR: Copy error: %s", err)
 	}
 	if err := src.Close(); err != nil {
 		atomic.AddInt64(errors, 1)
-		log.Printf("Close error: %s", err)
+		log.Errorf("ERROR: Close error: %s", err)
 	}
 	srcClosed <- true
 }

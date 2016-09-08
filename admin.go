@@ -8,10 +8,8 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	"github.com/litl/shuttle/client"
-	"github.com/litl/shuttle/log"
-
+	"github.com/skyfii/shuttle/client"
+	"github.com/skyfii/shuttle/log"
 	"github.com/gorilla/mux"
 )
 
@@ -56,7 +54,7 @@ func postConfig(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -64,13 +62,13 @@ func postConfig(w http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(body, &cfg)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if err := Registry.UpdateConfig(cfg); err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		// TODO: differentiate between ServerError and BadRequest
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -83,7 +81,7 @@ func postService(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -92,7 +90,7 @@ func postService(w http.ResponseWriter, r *http.Request) {
 	svcCfg := client.ServiceConfig{Name: vars["service"]}
 	err = json.Unmarshal(body, &svcCfg)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -100,7 +98,7 @@ func postService(w http.ResponseWriter, r *http.Request) {
 	// don't let someone update the wrong service
 	if svcCfg.Name != vars["service"] {
 		errMsg := "Mismatched service name in API call"
-		log.Error(errMsg)
+		log.Errorln("ERROR: ",errMsg)
 		http.Error(w, errMsg, http.StatusBadRequest)
 		return
 	}
@@ -112,7 +110,7 @@ func postService(w http.ResponseWriter, r *http.Request) {
 	err = Registry.UpdateConfig(cfg)
 	//FIXME: this doesn't return an error for an empty or broken service
 	if err != nil {
-		log.Error(err)
+		log.Error("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -125,6 +123,7 @@ func deleteService(w http.ResponseWriter, r *http.Request) {
 
 	err := Registry.RemoveService(vars["service"])
 	if err != nil {
+		log.Errorf("ERROR: %s",err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -139,6 +138,7 @@ func getBackendStats(w http.ResponseWriter, r *http.Request) {
 
 	backend, err := Registry.BackendStats(serviceName, backendName)
 	if err != nil {
+		log.Errorf("ERROR: %s",err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -165,7 +165,7 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -177,7 +177,7 @@ func postBackend(w http.ResponseWriter, r *http.Request) {
 	backendCfg := client.BackendConfig{Name: backendName}
 	err = json.Unmarshal(body, &backendCfg)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("ERROR: ",err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -227,7 +227,7 @@ func addHandlers() {
 func startAdminHTTPServer(wg *sync.WaitGroup) {
 	defer wg.Done()
 	addHandlers()
-	log.Println("Admin server listening on", adminListenAddr)
+	log.Println("INFO: Admin server listening on", adminListenAddr)
 
 	netw := "tcp"
 
@@ -246,7 +246,7 @@ func startAdminHTTPServer(wg *sync.WaitGroup) {
 
 	listener, err := net.Listen(netw, adminListenAddr)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("FATAL: Admin server failed and exited with %s", err)
 	}
 
 	http.Serve(listener, nil)

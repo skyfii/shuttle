@@ -13,8 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/log"
 )
 
 // onExitFlushLoop is a callback set by tests to detect the state of the
@@ -132,7 +131,7 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request, addr
 	pr.FinishTime = time.Now()
 
 	if err != nil {
-		log.Printf("http: proxy error: %v", err)
+		log.Errorf("ERROR: HTTP proxy error - %v", err)
 
 		// We want to ensure that we have a non-nil response even on error for
 		// the OnResponse callbacks. If the Callback chain completes, this will
@@ -165,7 +164,7 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request, addr
 	rw.WriteHeader(res.StatusCode)
 	_, err = p.copyResponse(rw, res.Body)
 	if err != nil {
-		log.Warnf("id=%s transfer error: %s", req.Header.Get("X-Request-Id"), err)
+		log.Warnf("WARN: id=%s transfer error: %s", req.Header.Get("X-Request-Id"), err)
 	}
 }
 

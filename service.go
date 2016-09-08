@@ -10,9 +10,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/litl/shuttle/client"
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/client"
+	"github.com/skyfii/shuttle/log"
 )
 
 var (
@@ -158,7 +157,7 @@ func NewService(cfg client.ServiceConfig) *Service {
 		s.next = s.leastConn
 	default:
 		if cfg.Balance != "" {
-			log.Warnf("invalid balancing algorithm '%s'", cfg.Balance)
+			log.Warnf("WARN: Invalid balancing algorithm '%s'", cfg.Balance)
 		}
 		s.next = s.roundRobin
 	}
@@ -196,7 +195,7 @@ func (s *Service) UpdateConfig(cfg client.ServiceConfig) error {
 			s.next = s.leastConn
 		default:
 			if cfg.Balance != "" {
-				log.Warnf("invalid balancing algorithm '%s'", cfg.Balance)
+				log.Warnf("WARN: Invalid balancing algorithm '%s'", cfg.Balance)
 			}
 			s.next = s.roundRobin
 		}
@@ -291,7 +290,7 @@ func (s *Service) add(backend *Backend) {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Printf("Adding %s backend %s{%s} for %s at %s", backend.Network, backend.Name, backend.Addr, s.Name, s.Addr)
+	log.Printf("INFO: Adding %s backend %s{%s} for %s at %s", backend.Network, backend.Name, backend.Addr, s.Name, s.Addr)
 	backend.up = true
 	backend.rwTimeout = s.ServerTimeout
 	backend.dialTimeout = s.DialTimeout
@@ -324,7 +323,7 @@ func (s *Service) remove(name string) bool {
 
 	for i, b := range s.Backends {
 		if b.Name == name {
-			log.Printf("Removing %s backend %s{%s} for %s at %s", b.Network, b.Name, b.Addr, s.Name, s.Addr)
+			log.Printf("INFO: Removing %s backend %s{%s} for %s at %s", b.Network, b.Name, b.Addr, s.Name, s.Addr)
 			last := len(s.Backends) - 1
 			deleted := b
 			s.Backends[i], s.Backends[last] = s.Backends[last], nil
@@ -347,7 +346,7 @@ func (s *Service) start() (err error) {
 
 	switch s.Network {
 	case "tcp", "tcp4", "tcp6":
-		log.Printf("Starting TCP listener for %s on %s", s.Name, s.Addr)
+		log.Printf("INFO: Starting TCP listener for %s on %s", s.Name, s.Addr)
 
 		s.tcpListener, err = newTimeoutListener(s.Network, s.Addr, s.ClientTimeout)
 		if err != nil {
@@ -356,20 +355,22 @@ func (s *Service) start() (err error) {
 
 		go s.runTCP()
 	case "udp", "udp4", "udp6":
-		log.Printf("Starting UDP listener for %s on %s", s.Name, s.Addr)
+		log.Printf("INFO: Starting UDP listener for %s on %s", s.Name, s.Addr)
 
 		laddr, err := net.ResolveUDPAddr(s.Network, s.Addr)
 		if err != nil {
+			log.Errorf("ERROR: Failed to resolve address with '%s'", err.Error())
 			return err
 		}
 		s.udpListener, err = net.ListenUDP(s.Network, laddr)
 		if err != nil {
+			log.Errorf("ERROR: Failed to listen on given port with '%s'", err.Error())
 			return err
 		}
 
 		go s.runUDP()
 	default:
-		return fmt.Errorf("Error: unknown network '%s'", s.Network)
+		return fmt.Errorf("ERROR: unknown network '%s'", s.Network)
 	}
 
 	return nil
@@ -512,7 +513,7 @@ func (s *Service) runUDP() {
 			//		return
 			//	}
 			if !isClosedError(err) {
-				log.Errorf("Use of closed network")
+				log.Errorf("ERROR: Use of closed network. Given error: %s", err.Error())
 				break
 			}
 		}
@@ -527,6 +528,7 @@ func (s *Service) runUDP() {
 		if backend == nil {
 			// this could produce a lot of message
 			// TODO: log some %, or max rate of messages
+			log.Warnf("WARN: No backends configured for service '%s'", s.Name)
 			continue
 		}
 
@@ -612,7 +614,7 @@ func (s *Service) Dial(nw, addr string) (net.Conn, error) {
 	s.Unlock()
 
 	if backend == nil {
-		return nil, DialError{fmt.Errorf("no backend matching %s", addr)}
+		return nil, DialError{fmt.Errorf("ERROR: No backend matching %s", addr)}
 	}
 
 	srvConn, err := s.dialer.Dial(nw, backend.Addr)
@@ -666,7 +668,7 @@ func (s *Service) stop() {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Printf("Stopping Listener for %s on %s:%s", s.Name, s.Network, s.Addr)
+	log.Printf("INFO: Stopping Listener for %s on %s:%s", s.Name, s.Network, s.Addr)
 	for _, backend := range s.Backends {
 		backend.Stop()
 	}
@@ -680,7 +682,7 @@ func (s *Service) stop() {
 
 		err := s.tcpListener.Close()
 		if err != nil {
-			log.Println(err)
+			log.Errorln("ERROR: Unable to close TCP listener %s", err)
 		}
 
 	case "udp", "udp4", "udp6":
@@ -689,7 +691,7 @@ func (s *Service) stop() {
 		}
 		err := s.udpListener.Close()
 		if err != nil {
-			log.Println(err)
+			log.Errorln("ERROR: Unable to close UDP listener %s", err)
 		}
 	}
 

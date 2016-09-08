@@ -9,9 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/litl/shuttle/client"
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/client"
+	"github.com/skyfii/shuttle/log"
 	. "gopkg.in/check.v1"
 )
 

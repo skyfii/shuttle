@@ -10,8 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sync"
-
-	"github.com/litl/shuttle/client"
+	"github.com/skyfii/shuttle/client"
 	. "gopkg.in/check.v1"
 )
 

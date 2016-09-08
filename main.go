@@ -63,7 +63,7 @@ func main() {
 		return
 	}
 
-	log.Printf("Starting shuttle %s", buildVersion)
+	log.Printf("INFO: Starting shuttle %s", buildVersion)
 	loadConfig()
 
 	var wg sync.WaitGroup

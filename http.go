@@ -10,8 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/litl/shuttle/log"
+	"github.com/skyfii/shuttle/log"
 )
 
 var (
@@ -87,7 +86,7 @@ func (r *HostRouter) Start(ready chan bool) {
 	var err error
 	r.listener, err = newTimeoutListener("tcp", r.server.Addr, 300*time.Second)
 	if err != nil {
-		log.Errorf("%s", err)
+		log.Errorf("ERROR: %s", err)
 		r.Unlock()
 		return
 	}
@@ -99,14 +98,14 @@ func (r *HostRouter) Start(ready chan bool) {
 
 	r.Unlock()
 
-	log.Printf("%s server listening at %s", strings.ToUpper(r.Scheme), r.server.Addr)
+	log.Printf("INFO: %s server listening at %s", strings.ToUpper(r.Scheme), r.server.Addr)
 	if ready != nil {
 		close(ready)
 	}
 
 	// This will log a closed connection error every time we Stop
 	// but that's mostly a testing issue.
-	log.Errorf("%s", r.server.Serve(listener))
+	log.Errorf("ERROR: %s", r.server.Serve(listener))
 }
 
 func (r *HostRouter) Stop() {
@@ -165,11 +164,11 @@ func loadCerts(certDir string) (*tls.Config, error) {
 
 	for key, pair := range pairs {
 		if pair[0] == "" {
-			log.Errorf("missing cert for key: %s", pair[1])
+			log.Errorf("ERROR: Missing cert for key: %s", pair[1])
 			continue
 		}
 		if pair[1] == "" {
-			log.Errorf("missing key for cert: %s", pair[0])
+			log.Errorf("ERROR: Missing key for cert: %s", pair[0])
 			continue
 		}
 
@@ -179,11 +178,11 @@ func loadCerts(certDir string) (*tls.Config, error) {
 			continue
 		}
 		tlsCfg.Certificates = append(tlsCfg.Certificates, cert)
-		log.Debugf("loaded X509KeyPair for %s", key)
+		log.Debugf("DEBUG: Loaded X509KeyPair for %s", key)
 	}
 
 	if len(tlsCfg.Certificates) == 0 {
-		return nil, fmt.Errorf("no tls certificates loaded")
+		return nil, fmt.Errorf("ERROR: No tls certificates loaded")
 	}
 
 	tlsCfg.BuildNameToCertificate()
@@ -320,10 +319,10 @@ func (e *ErrorResponse) Get(code int) *ErrorPage {
 }
 
 func (e *ErrorResponse) fetch(page *ErrorPage) {
-	log.Debugf("Fetching error page from %s", page.Location)
+	log.Debugf("DEBUG: Fetching error page from %s", page.Location)
 	resp, err := e.client.Get(page.Location)
 	if err != nil {
-		log.Warnf("Could not fetch %s: %s", page.Location, err.Error())
+		log.Warnf("WARN: Could not fetch %s: %s", page.Location, err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -337,7 +336,7 @@ func (e *ErrorResponse) fetch(page *ErrorPage) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Warnf("Server returned %d when fetching %s", resp.StatusCode, page.Location)
+		log.Warnf("WARN: Server returned %d when fetching %s", resp.StatusCode, page.Location)
 		return
 	}
 
@@ -351,7 +350,7 @@ func (e *ErrorResponse) fetch(page *ErrorPage) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Warnf("Error reading response from %s: %s", page.Location, err.Error())
+		log.Warnf("WARN: Error reading response from %s: %s", page.Location, err.Error())
 		return
 	}
 
@@ -360,7 +359,7 @@ func (e *ErrorResponse) fetch(page *ErrorPage) {
 		page.SetBody(body)
 		return
 	}
-	log.Warnf("Empty response from %s", page.Location)
+	log.Warnf("WARN: Empty response from %s", page.Location)
 }
 
 // This replaces all existing ErrorPages

@@ -8,8 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	shuttle "github.com/litl/shuttle/client"
+	shuttle "github.com/skyfii/shuttle/client"
 )
 
 var (

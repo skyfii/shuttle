@@ -6,8 +6,7 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"testing"
-
-	"github.com/litl/shuttle/client"
+	"github.com/skyfii/shuttle/client"
 )
 
 var (
