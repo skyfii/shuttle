@@ -163,7 +163,7 @@ func (b *Backend) check() {
 		c.(*net.TCPConn).SetLinger(0)
 		c.Close()
 	} else {
-		log.Debug("DEBUG: Check error:", e)
+		log.Warnf("WARN: Backend check for %s failed with error:", e)
 		up = false
 	}
 
@@ -176,7 +176,7 @@ func (b *Backend) check() {
 		b.checkOK++
 		if b.riseCount >= b.rise {
 			if !b.up {
-				log.Debugf("DEBUG: Marking backend %s Up", b.Name)
+				log.Warnf("WARN: Marking backend %s Up", b.Name)
 			}
 			b.up = true
 		}
@@ -187,7 +187,7 @@ func (b *Backend) check() {
 		b.checkFail++
 		if b.fallCount >= b.fall {
 			if b.up {
-				log.Debugf("DEBUG: Marking backend %s Down", b.Name)
+				log.Warnf("WARN: Marking backend %s Down", b.Name)
 			}
 			b.up = false
 		}

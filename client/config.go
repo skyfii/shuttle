@@ -226,6 +226,12 @@ func (s ServiceConfig) SetDefaults() ServiceConfig {
 	if s.CheckInterval == 0 {
 		s.CheckInterval = DefaultCheckInterval
 	}
+	if s.ClientTimeout == 0 {
+		s.ClientTimeout = DefaultTimeout
+	}
+	if s.ServerTimeout == 0 {
+		s.ServerTimeout = DefaultTimeout
+	}
 	if s.Rise == 0 {
 		s.Rise = DefaultRise
 	}
